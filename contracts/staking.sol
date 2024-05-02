@@ -3,7 +3,7 @@ pragma solidity 0.8.24;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "contracts/ABDKMath64x64.sol";
+import "./ABDKMath64x64.sol";
 
 contract Staking {
     IERC20 public stakingToken;
@@ -11,21 +11,15 @@ contract Staking {
 
     uint256 public startTime;
     uint256 public lockTime;
-
     uint256 public APY;
-    uint256 public perMonthReward;
 
     address ownerWallet;
 
-    // uint256 private tier2_APY;
-    // uint256 private tier3_APY;
-
+    
     mapping(address => uint256) public stakedToken;
     mapping(address => uint256) public rewardedToken;
-    mapping(address => uint256) public userReward;
     mapping(address => uint256) public userTier;
 
-    mapping(address => uint256) public userAmount;
 
     constructor() {
         stakingToken = IERC20(0xd8b934580fcE35a11B58C6D73aDeE468a2833fa8);
@@ -34,68 +28,80 @@ contract Staking {
         ownerWallet = 0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2;
     }
 
-    function stake(uint256 amount) internal {
-        // require(stakingToken.balanceOf(msg.sender) > amount);
+    function stake(uint256 _tier, uint256 amount) internal {
+        require(stakedToken[msg.sender] == 0, "User already staked");
+
+        userTier[msg.sender]= _tier;
         stakingToken.transferFrom(msg.sender, address(this), amount);
         stakedToken[msg.sender] += amount;
     }
+                                          
 
-    function selectTier(uint256 _tier, uint256 amountToStake) public {
-        userTier[msg.sender] = _tier;
-        stake(amountToStake);
-    }
-
-    function Unstake1() public {
-            uint256 monthsStaked = block.timestamp - startTime / 60; // Calculate months staked
+    function Unstake() public {
+        uint256 monthsStaked = getMONTH(); // Calculate months staked
 
         uint256 tierSelect = userTier[msg.sender];
-        if (tierSelect == 1 ) {
-            // require(block.timestamp > startTime + 3 minutes , "lock time not reached tier 1");
-            if (block.timestamp < startTime + 3 minutes) {
+        if (tierSelect == 1) {
             // If not reached the lock time, return only reward
-            RewardTier1(monthsStaked);
-        }
-            withdrawTier1(monthsStaked);
-
+            (block.timestamp < startTime + 3 minutes) ? RewardTier1(monthsStaked) : withdrawTier1();
         } else if (tierSelect == 2) {
-            require(block.timestamp > startTime + 6 minutes , "lock time not reached tier 1");
-               if (block.timestamp < startTime + 6 minutes) {
             // If not reached the lock time, return only reward
-            RewardTier2(monthsStaked);
-        }
-            withdrawTier2(monthsStaked);
-
+            (block.timestamp < startTime + 6 minutes) ? RewardTier2(monthsStaked) : withdrawTier2();
         } else if (tierSelect == 3) {
-            require(block.timestamp > startTime + 6 minutes , "lock time not reached tier 1");
-                if (block.timestamp < startTime + 9 minutes) {
             // If not reached the lock time, return only reward
-            RewardTier3(monthsStaked);
-        }
-            withdrawTier3(monthsStaked);
+            (block.timestamp < startTime + 9 minutes) ? RewardTier3(monthsStaked) : withdrawTier3();
         }
     }
 
+    // TODO
 
 
-function calculateReward(uint256 principal, uint256 ratio, uint256 months) internal pure returns (uint256) {
-    uint256 interest = _compound(principal * 1e18, ratio, months);
-    return interest;
-}
-
-
-    function withdrawTier1(uint256 month) public {
+    function withdrawTier1() private {
         require(stakedToken[msg.sender] >= 0);
         uint256 _ratio = 8333333333333333;
-        uint256 interest = _compound(stakedToken[msg.sender] * 1e18, _ratio, month);
+        uint256 interest = _compound(
+            stakedToken[msg.sender] * 1e18,
+            _ratio,
+            3
+        );
         uint256 totalAmount = stakedToken[msg.sender] * 1e18 + interest;
-        rewardToken.transferFrom(ownerWallet, msg.sender, totalAmount);
-        rewardedToken[msg.sender] += totalAmount;
+        uint256 finalAmount = totalAmount - rewardedToken[msg.sender];
+        rewardToken.transferFrom(ownerWallet, msg.sender, finalAmount);
+        rewardedToken[msg.sender] += finalAmount;
         delete stakedToken[msg.sender];
     }
 
-    function RewardTier1(uint256 month) public {
+    function RewardTier1(uint256 month) private {
         require(stakedToken[msg.sender] >= 0);
         uint256 _ratio = 8333333333333333;
+        uint256 interest = _compound(
+            stakedToken[msg.sender] * 1e18,
+            _ratio,
+            month
+        );
+        // TODO
+        rewardToken.transferFrom(ownerWallet, msg.sender, interest);
+        rewardedToken[msg.sender] += interest;
+    }
+
+    function withdrawTier2() private {
+        require(stakedToken[msg.sender] >= 0);
+        uint256 _ratio = 16666666666666666;
+        uint256 interest = _compound(
+            stakedToken[msg.sender] * 1e18,
+            _ratio,
+            6
+        );
+        uint256 totalAmount = stakedToken[msg.sender] * 1e18 + interest;
+        uint256 finalAmount = totalAmount - rewardedToken[msg.sender];
+        rewardToken.transferFrom(ownerWallet, msg.sender, finalAmount);
+        rewardedToken[msg.sender] += finalAmount;
+        delete stakedToken[msg.sender];
+    }
+
+    function RewardTier2(uint256 month) private {
+        require(stakedToken[msg.sender] >= 0);
+        uint256 _ratio = 16666666666666666;
         uint256 interest = _compound(
             stakedToken[msg.sender] * 1e18,
             _ratio,
@@ -105,78 +111,33 @@ function calculateReward(uint256 principal, uint256 ratio, uint256 months) inter
         rewardedToken[msg.sender] += interest;
     }
 
-
-    function withdrawTier2(uint256 month) public {
+    function withdrawTier3() private {
         require(stakedToken[msg.sender] >= 0);
-        uint256 _ratio = 16666666666666666;
-        uint256 interest = _compound(stakedToken[msg.sender] * 1e18, _ratio, month);
+        uint256 interest = _APY(9);
         uint256 totalAmount = stakedToken[msg.sender] * 1e18 + interest;
-        rewardToken.transferFrom(ownerWallet, msg.sender, totalAmount);
-        rewardedToken[msg.sender] += totalAmount;
+        uint256 finalAmount = totalAmount - rewardedToken[msg.sender];
+        rewardToken.transferFrom(ownerWallet, msg.sender, finalAmount);
+        rewardedToken[msg.sender] += finalAmount;
         delete stakedToken[msg.sender];
     }
 
-    function RewardTier2(uint256 month) public {
+    function RewardTier3(uint256 month) private {
         require(stakedToken[msg.sender] >= 0);
-        uint256 _ratio = 16666666666666666;
-        uint256 interest = _compound(
-            stakedToken[msg.sender] * 1e18,
-            _ratio,
-            month
-        );
-        rewardToken.transferFrom(ownerWallet, msg.sender, interest);
-        rewardedToken[msg.sender] += interest;
-    }
-
-    function withdrawTier3(uint256 month) public {
-        require(stakedToken[msg.sender] >= 0);
-        uint256 interest = _APY(month);
-        uint256 totalAmount = stakedToken[msg.sender] * 1e18 + interest;
-        rewardToken.transferFrom(ownerWallet, msg.sender, totalAmount);
-        rewardedToken[msg.sender] += totalAmount;
-        delete stakedToken[msg.sender];
-    }
-    function RewardTier3(uint256 month) public {
-        require(stakedToken[msg.sender] >= 0);
-        uint256 _ratio = FIND();
         uint256 interest = _APY(month);
         rewardToken.transferFrom(ownerWallet, msg.sender, interest);
         rewardedToken[msg.sender] += interest;
     }
 
-    function getStakingToken() public view returns (uint256) {
-        return stakingToken.balanceOf(address(this));
-    }
-
-    function getSTAKEToken(address _add) public view returns (uint256) {
-        return stakingToken.balanceOf(_add);
-    }
-
-    function REWARDEDToken() public view returns (uint256) {
-        return rewardToken.balanceOf(address(this));
-    }
-
-    function getREWARDToken(address _add) public view returns (uint256) {
-        return rewardToken.balanceOf(_add);
-    }
-
-    function getRewardToken() public view returns (uint256) {
-        return rewardToken.balanceOf(ownerWallet);
-    }
-
-    function rewardAllowance(address owner, address spender)
-        public
-        view
-        returns (uint256)
-    {
-        return rewardToken.allowance(owner, spender);
+    function getMONTH() private view returns (uint256){
+           uint256 a= block.timestamp - startTime; // Calculate months staked
+           return a/60;
     }
 
     function _compound(
         uint256 _principal,
         uint256 _ratio,
         uint256 _exponent
-    ) public pure returns (uint256) {
+    ) private pure returns (uint256) {
         if (_exponent == 0) {
             return 0;
         }
@@ -193,11 +154,11 @@ function calculateReward(uint256 principal, uint256 ratio, uint256 months) inter
         return accruedReward - _principal;
     }
 
-    function FIND() public pure returns (uint256) {
+    function FIND() private pure returns (uint256) {
         return (33 * 1e18) / 100;
     }
 
-    function _APY(uint256 _n) public pure returns (uint256) {
+    function _APY(uint256 _n) private pure returns (uint256) {
         uint256 n = _n;
         return ((FIND() / 12) * n) * 100;
     }
