@@ -134,10 +134,6 @@ contract Staking {
         return rewardToken.balanceOf(_add);
     }
 
-    function getRewardToken() public view returns (uint256) {
-        return rewardToken.balanceOf(ownerWallet);
-    }
-
     function rewardAllowance(address owner, address spender)
         public
         view
