@@ -10,25 +10,21 @@ contract Staking {
     IERC20 public rewardToken;
 
     uint256 public startTime;
-    uint256 public lockTime;
-    uint256 public APY;
 
     address ownerWallet;
-
     
     mapping(address => uint256) public stakedToken;
     mapping(address => uint256) public rewardedToken;
     mapping(address => uint256) public userTier;
 
-
     constructor() {
-        stakingToken = IERC20(0xd8b934580fcE35a11B58C6D73aDeE468a2833fa8);
-        rewardToken = IERC20(0xf8e81D47203A594245E36C48e151709F0C19fBe8);
+        stakingToken = IERC20(0x0813d4a158d06784FDB48323344896B2B1aa0F85);
+        rewardToken = IERC20(0xE5f2A565Ee0Aa9836B4c80a07C8b32aAd7978e22);
         startTime = block.timestamp;
         ownerWallet = 0xAb8483F64d9C6d1EcF9b849Ae677dD3315835cb2;
     }
 
-    function stake(uint256 _tier, uint256 amount) internal {
+    function stake(uint256 _tier, uint256 amount) public {
         require(stakedToken[msg.sender] == 0, "User already staked");
 
         userTier[msg.sender]= _tier;
@@ -39,93 +35,70 @@ contract Staking {
 
     function Unstake() public {
         uint256 monthsStaked = getMONTH(); // Calculate months staked
-
+    
         uint256 tierSelect = userTier[msg.sender];
         if (tierSelect == 1) {
             // If not reached the lock time, return only reward
-            (block.timestamp < startTime + 3 minutes) ? RewardTier1(monthsStaked) : withdrawTier1();
+            (block.timestamp < startTime + 3 minutes) ? RewardTier(monthsStaked) : withdrawTier(3);
         } else if (tierSelect == 2) {
             // If not reached the lock time, return only reward
-            (block.timestamp < startTime + 6 minutes) ? RewardTier2(monthsStaked) : withdrawTier2();
+            (block.timestamp < startTime + 6 minutes) ? RewardTier(monthsStaked) : withdrawTier(6);
         } else if (tierSelect == 3) {
             // If not reached the lock time, return only reward
             (block.timestamp < startTime + 9 minutes) ? RewardTier3(monthsStaked) : withdrawTier3();
         }
     }
 
-    // TODO
-
-
-    function withdrawTier1() private {
+       function withdrawTier(uint256 month) private {
+        uint256 tier = userTier[msg.sender];
         require(stakedToken[msg.sender] >= 0);
-        uint256 _ratio = 8333333333333333;
-        uint256 interest = _compound(
-            stakedToken[msg.sender] * 1e18,
-            _ratio,
-            3
-        );
-        uint256 totalAmount = stakedToken[msg.sender] * 1e18 + interest;
-        uint256 finalAmount = totalAmount - rewardedToken[msg.sender];
-        rewardToken.transferFrom(ownerWallet, msg.sender, finalAmount);
-        rewardedToken[msg.sender] += finalAmount;
-        delete stakedToken[msg.sender];
-    }
-
-    function RewardTier1(uint256 month) private {
-        require(stakedToken[msg.sender] >= 0);
-        uint256 _ratio = 8333333333333333;
+         uint256 _ratio;
+        (tier ==1)? _ratio = 8333333333333333 : _ratio = 16666666666666666 ;
         uint256 interest = _compound(
             stakedToken[msg.sender] * 1e18,
             _ratio,
             month
         );
-        // TODO
-        rewardToken.transferFrom(ownerWallet, msg.sender, interest);
-        rewardedToken[msg.sender] += interest;
-    }
-
-    function withdrawTier2() private {
-        require(stakedToken[msg.sender] >= 0);
-        uint256 _ratio = 16666666666666666;
-        uint256 interest = _compound(
-            stakedToken[msg.sender] * 1e18,
-            _ratio,
-            6
-        );
-        uint256 totalAmount = stakedToken[msg.sender] * 1e18 + interest;
+        uint256 totalAmount =  interest;
         uint256 finalAmount = totalAmount - rewardedToken[msg.sender];
         rewardToken.transferFrom(ownerWallet, msg.sender, finalAmount);
         rewardedToken[msg.sender] += finalAmount;
+        stakingToken.transfer(msg.sender , stakedToken[msg.sender]);
         delete stakedToken[msg.sender];
     }
 
-    function RewardTier2(uint256 month) private {
+      function RewardTier(uint256 month) private {
+        uint256 tier = userTier[msg.sender];
         require(stakedToken[msg.sender] >= 0);
-        uint256 _ratio = 16666666666666666;
+        uint256 _ratio;
+        (tier ==1)? _ratio = 8333333333333333 : _ratio = 16666666666666666;
         uint256 interest = _compound(
             stakedToken[msg.sender] * 1e18,
             _ratio,
             month
         );
-        rewardToken.transferFrom(ownerWallet, msg.sender, interest);
-        rewardedToken[msg.sender] += interest;
+        uint256 finalAmount= interest - rewardedToken[msg.sender];
+        rewardToken.transferFrom(ownerWallet, msg.sender, finalAmount);
+        rewardedToken[msg.sender] += finalAmount;
     }
 
     function withdrawTier3() private {
         require(stakedToken[msg.sender] >= 0);
         uint256 interest = _APY(9);
-        uint256 totalAmount = stakedToken[msg.sender] * 1e18 + interest;
+        uint256 totalAmount = (stakedToken[msg.sender] *  interest) / 1e18;
         uint256 finalAmount = totalAmount - rewardedToken[msg.sender];
         rewardToken.transferFrom(ownerWallet, msg.sender, finalAmount);
+        stakingToken.transfer(msg.sender, stakedToken[msg.sender]);
         rewardedToken[msg.sender] += finalAmount;
         delete stakedToken[msg.sender];
     }
 
     function RewardTier3(uint256 month) private {
         require(stakedToken[msg.sender] >= 0);
-        uint256 interest = _APY(month);
-        rewardToken.transferFrom(ownerWallet, msg.sender, interest);
-        rewardedToken[msg.sender] += interest;
+        uint256 interest = _APY(month) * stakedToken[msg.sender];
+        uint256 finalAmount= interest - rewardedToken[msg.sender];
+        rewardToken.transferFrom(ownerWallet, msg.sender, finalAmount);
+        rewardedToken[msg.sender] += finalAmount;
     }
 
     function getMONTH() private view returns (uint256){
@@ -158,8 +131,9 @@ contract Staking {
         return (33 * 1e18) / 100;
     }
 
-    function _APY(uint256 _n) private pure returns (uint256) {
+    function _APY(uint256 _n) public pure returns (uint256) {
         uint256 n = _n;
-        return ((FIND() / 12) * n) * 100;
+        return ((FIND() / 12) * n) ;
     }
+
 }
